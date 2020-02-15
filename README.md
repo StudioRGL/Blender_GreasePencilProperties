@@ -18,3 +18,8 @@ to the correct one, edit it, then switch back
 
 - maybe in use we render these sequentially, ie do all layers for frame 1, etc? or we use render layers
 
+
+
+## TODO
+- move update function
+- make it work with view layers I guess?

@@ -10,9 +10,14 @@ from enum import Enum
 # switch viewed paramater
 # add controls for parameter switching?
 
+def update_func(self, context):
+    print("my test function", self)#
+    updateColorToCurrentMode(self, context)
+
+
 class GreasePencilCustomProperties(bpy.types.PropertyGroup):
     """Scene properties that are used for the addon"""
-    currentMode: bpy.props.IntProperty() = 0
+    currentMode: bpy.props.IntProperty(update = update_func) = 0 # update = updateColorToCurrentMode
     previousMode: bpy.props.IntProperty() = 0  # so we can see if it changed
     layerNames: bpy.props.StringProperty() = [] # should really be a list but ain't nobody got time for that
 
@@ -92,9 +97,9 @@ def getMaterialColor(mat):
     return [0, 0, 0]
 
 
-def updateColorToCurrentMode():
+def updateColorToCurrentMode(self, context):
     """ stores the previous tweaks, set the color from the other thing """
-    props = bpy.context.scene.grease_pencil_custom_properties
+    props = context.scene.grease_pencil_custom_properties
     currentMode = props.currentMode
     previousMode = props.previousMode
     layerNames = props.layerNames.split()
@@ -190,3 +195,6 @@ setup()
 
 
 #updateColorToCurrentMode()
+
+
+#bpy.app.handlers.depsgraph_update_post.append(updateColorToCurrentMode)
