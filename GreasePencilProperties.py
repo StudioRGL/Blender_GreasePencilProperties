@@ -15,7 +15,7 @@ from enum import Enum
 # these two textures are required for the stroke rendering
 GPP_STROKE_MAP_FILL_TEXTURE_NAME = 'strokeMap_fillTexture'
 GPP_STROKE_MAP_STROKE_TEXTURE_NAME = 'strokeMap_strokeTexture'
-
+GPP_STROKE_MAP_FADE_RATIO = 0.5 # how much the layer influences the stroke map
 
 def update_func(self, context):
     print("my test function", self)
@@ -72,6 +72,14 @@ def getAllGreasePencilMaterials():
             answer.append(mat)
     return answer
 
+def getAllGreasePencilObjects():
+    """ Returns a list of all grease pencil materials in the scene. """
+    answer = []
+    for mat in bpy.data.grease_pencils:
+        # maybe check if it's on this layer?
+        answer.append(mat)
+    return answer
+
 
 def setMaterialColor(mat, color):
     """overwrites the material color with the new color. Can give it a single number or a 3 digit"""
@@ -107,7 +115,8 @@ def getMaterialColor(mat):
 
 
 def updateColorToCurrentMode(self, context):
-    """ stores the previous tweaks, set the color from the other thing """
+    """ stores the previous tweaks, set the color from the other thing 
+    gets called whenever mode changes """
     props = context.scene.grease_pencil_custom_properties
     currentMode = props.currentMode
     previousMode = props.previousMode
@@ -118,27 +127,38 @@ def updateColorToCurrentMode(self, context):
     
     print('switching from mode', layerNames[previousMode], 'to', layerNames[currentMode])
 
-
-    # note, special case when mode is strokeMap
-    # D.materials['stroke_mortar'].grease_pencil.fill_style = 'SOLID'
-    # D.materials['stroke_mortar'].grease_pencil.stroke_style = 'TEXTURE'
-    # D.materials['stroke_mortar'].grease_pencil.stroke_image = bpy.data.images['horizontalGradient']
-
-
     # for all mats
     for mat in getAllGreasePencilMaterials():
-        # special case for stroke map
+        # special case if CURRENT mode is stroke map
         if layerNames[currentMode] == 'strokeMap':
+            # slap gradients on everything
             mat.grease_pencil.fill_style = 'TEXTURE'
             mat.grease_pencil.stroke_style = 'TEXTURE'
+            # adjust the layers
+            # layers["detail 2 vertical"].tint_color
+
+            # go thru all layers in all grease pencil objects and enable shit
+            for gpObject in getAllGreasePencilObjects():
+                gpLayers = gpObject.layers.values()
+                for gpLayer in gpLayers:
+                    gpLayer.tint_factor = GPP_STROKE_MAP_FADE_RATIO
+
         else:
-            # store old value (if it wasn't stroke map)
+            # store old value, or disable random stuff stroke map needs
             if layerNames[previousMode] == 'strokeMap':
                 # specific stuff for switching from stroke map
                 # turn it solid again
                 mat.grease_pencil.fill_style = 'SOLID'
                 mat.grease_pencil.stroke_style = 'SOLID'
+
+                # turn off layer adjustments
+                # go thru all layers in all grease pencil objects and enable shit
+                for gpObject in getAllGreasePencilObjects():
+                    gpLayers = gpObject.layers.values()
+                    for gpLayer in gpLayers:
+                        gpLayer.tint_factor = 0
             else:
+                # (if PREVIOUS MODE wasn't stroke map)
                 # for all other ones
                 color = getMaterialColor(mat)
                 storeLocation = mat[layerNames[previousMode]]
@@ -173,6 +193,22 @@ def addCustomProperty(propertyName, defaultValue):
             mat.grease_pencil.stroke_image = bpy.data.images[GPP_STROKE_MAP_STROKE_TEXTURE_NAME]
             mat.grease_pencil.fill_image = bpy.data.images[GPP_STROKE_MAP_FILL_TEXTURE_NAME]
             mat.grease_pencil.pixel_size = 1000  # magic! shazam
+
+            # go thru all layers in all grease pencil objects and set the tint color (overwrites, so don't use it yet!)
+            for gpObject in getAllGreasePencilObjects():
+                gpLayers = gpObject.layers.values()
+                nKeys = len(gpLayers) # only required for setup
+                iKey = 0
+                for gpLayer in gpLayers:
+                    # enable adjustment
+                    if nKeys<2:
+                        amount = 0
+                    else:
+                        amount = 1.0*iKey/(nKeys-1)
+                    gpLayer.tint_color = (amount, amount, amount)
+                    iKey+=1
+
+
         elif propertyName not in mat.keys():
             # special case for colour
             if propertyName == "param_color":
