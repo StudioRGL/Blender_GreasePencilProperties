@@ -1,4 +1,4 @@
-# D.materials[1]['prop2'] = 5 # just set 'em, it's pretty simple
+# D.materials[1]['prop'] = 5 # just set 'em, it's pretty simple
 # a.line_color[0]
 # https://docs.blender.org/api/blender_python_api_2_60_6/bpy.app.handlers.html#persistent-handler-example
 
@@ -10,8 +10,15 @@ from enum import Enum
 # switch viewed paramater
 # add controls for parameter switching?
 
+
+# Ok, yeah globals, sorry
+# these two textures are required for the stroke rendering
+GPP_STROKE_MAP_FILL_TEXTURE_NAME = 'strokeMap_fillTexture'
+GPP_STROKE_MAP_STROKE_TEXTURE_NAME = 'strokeMap_strokeTexture'
+
+
 def update_func(self, context):
-    print("my test function", self)#
+    print("my test function", self)
     updateColorToCurrentMode(self, context)
 
 
@@ -49,12 +56,12 @@ def hasLength(v):
     return ('__len__' in dir(v))
 
 
-def addModeProperties():
-    """Adds an enum to the UI that controls the grease pencil display mode"""
-    viewLayers = bpy.context.scene.view_layers.values()
-    for vl in viewLayers:
-        pass#vl['TESTVALUE'] = bpy.props.FloatProperty(name="Test Prob")
-    return
+# def addModeProperties():
+#    """Adds an enum to the UI that controls the grease pencil display mode"""
+#    viewLayers = bpy.context.scene.view_layers.values()
+#    for vl in viewLayers:
+#        pass#vl['TESTVALUE'] = bpy.props.FloatProperty(name="Test Prob")
+#    return
 
 
 def getAllGreasePencilMaterials():
@@ -67,6 +74,7 @@ def getAllGreasePencilMaterials():
 
 
 def setMaterialColor(mat, color):
+    """overwrites the material color with the new color. Can give it a single number or a 3 digit"""
     # make sure the color is 3 digit
     if hasLength(color) is False:
         # it has no length attribute, gonna put it in a list
@@ -89,7 +97,8 @@ def setMaterialColor(mat, color):
 
 
 def getMaterialColor(mat):
-    # first figure out appropriate vlaue
+    """ returns a 3 float list for RGB """
+    # first figure out appropriate value
     if mat.grease_pencil.show_stroke:
         return [mat.grease_pencil.color[0], mat.grease_pencil.color[1], mat.grease_pencil.color[2]]
     elif mat.grease_pencil.show_fill:
@@ -109,28 +118,43 @@ def updateColorToCurrentMode(self, context):
     
     print('switching from mode', layerNames[previousMode], 'to', layerNames[currentMode])
 
+
+    # note, special case when mode is strokeMap
+    # D.materials['stroke_mortar'].grease_pencil.fill_style = 'SOLID'
+    # D.materials['stroke_mortar'].grease_pencil.stroke_style = 'TEXTURE'
+    # D.materials['stroke_mortar'].grease_pencil.stroke_image = bpy.data.images['horizontalGradient']
+
+
     # for all mats
     for mat in getAllGreasePencilMaterials():
-        # store old value
-        color = getMaterialColor(mat)
-        storeLocation = mat[layerNames[previousMode]]
-        if hasLength(storeLocation):
-            for i in range(len(storeLocation)):
-                if i>=3:
-                    break
-                storeLocation[i] = color[i]
+        # special case for stroke map
+        if layerNames[currentMode] == 'strokeMap':
+            mat.grease_pencil.fill_style = 'TEXTURE'
+            mat.grease_pencil.stroke_style = 'TEXTURE'
         else:
-            mat[layerNames[previousMode]] = color[0] # just set first value
+            # store old value (if it wasn't stroke map)
+            if layerNames[previousMode] == 'strokeMap':
+                # specific stuff for switching from stroke map
+                # turn it solid again
+                mat.grease_pencil.fill_style = 'SOLID'
+                mat.grease_pencil.stroke_style = 'SOLID'
+            else:
+                # for all other ones
+                color = getMaterialColor(mat)
+                storeLocation = mat[layerNames[previousMode]]
+                if hasLength(storeLocation):
+                    for i in range(len(storeLocation)):
+                        if i>=3:
+                            break
+                        storeLocation[i] = color[i]
+                else:
+                    mat[layerNames[previousMode]] = color[0] # just set first value
 
-        pass
-
-
-        # load new value
-        setMaterialColor(mat, mat[layerNames[currentMode]])
+            # load new value
+            setMaterialColor(mat, mat[layerNames[currentMode]])
 
     # update modes
     props.previousMode = currentMode
-
 
 
 def addCustomProperty(propertyName, defaultValue):
@@ -140,22 +164,22 @@ def addCustomProperty(propertyName, defaultValue):
     if propertyName not in scene.grease_pencil_custom_properties.layerNames.split():
         scene.grease_pencil_custom_properties.layerNames += ' ' + propertyName
 
-
-
     # for all grease pencil materials
     for mat in getAllGreasePencilMaterials():
         # don't bother if property exists
-
-        if propertyName not in mat.keys():
+        if propertyName == 'strokeMap':
+            # we don't need to add custom attributes for strokeMap
+            # make sure it has the right texture added. Currently textured strokes aren't supported
+            mat.grease_pencil.stroke_image = bpy.data.images[GPP_STROKE_MAP_STROKE_TEXTURE_NAME]
+            mat.grease_pencil.fill_image = bpy.data.images[GPP_STROKE_MAP_FILL_TEXTURE_NAME]
+            mat.grease_pencil.pixel_size = 1000  # magic! shazam
+        elif propertyName not in mat.keys():
             # special case for colour
             if propertyName == "param_color":
                 defaultValue = getMaterialColor(mat)
 
             # ok, it doesn't exist, let's add it
             mat[propertyName] = defaultValue
-        
-
-
     return
 
 
@@ -170,6 +194,11 @@ def setup():
     """ run this once to set up the system """
     register()
 
+    # check we got the two textures we need:
+    for image in [GPP_STROKE_MAP_FILL_TEXTURE_NAME, GPP_STROKE_MAP_STROKE_TEXTURE_NAME]:
+        if image not in bpy.data.images:
+            raise(Exception('This script requires an image named ' + image + ' to run!'))
+
     # clear existing layer variables
     props = bpy.context.scene.grease_pencil_custom_properties
     props.layerNames = ''
@@ -180,21 +209,19 @@ def setup():
     props = [
                 ('param_color', [0.5, 0.5, 0.5]),
                 ('param_specularSmooth', 0.0),
-                ('param_specularRough', 0.0)
+                ('param_specularRough', 0.0),
+                ('strokeMap', 0) # this is a special one, that doesn't create custom attributes
             ]
     for p in props:
         addCustomProperty(p[0], p[1])
-
-    addModeProperties()
 
     print('completed setup')
     return
 
 
+# do this thang
 setup()
 
-
-#updateColorToCurrentMode()
 
 
 #bpy.app.handlers.depsgraph_update_post.append(updateColorToCurrentMode)
